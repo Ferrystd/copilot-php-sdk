@@ -1,58 +1,59 @@
 # GitHub Copilot PHP SDK
 
-PHP SDK for programmatic control of GitHub Copilot CLI via JSON-RPC.
+GitHub Copilot PHP SDK（社区实现），用于通过 JSON-RPC 以编程方式控制 Copilot CLI。
 
-> **Note:** This SDK is in public preview and may change in breaking ways.
+> **注意**：当前处于 Public Preview 阶段，接口可能发生不兼容变更。
 
-## Requirements
+---
 
-- PHP 8.1 or higher
-- [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli) installed and authenticated
+## 1. 能力概览
 
-## Installation
+- 支持 **V1（当前）** 与 **V0（兼容）** 两套命名空间
+- 通过 Copilot CLI server mode 与 GitHub Copilot 服务通信
+- 支持会话创建、恢复、消息收发、模型切换、配额查询
+- 支持自定义 Tool、Command、权限审批、用户输入、Elicitation
+- 支持 MCP 配置与发现、技能发现与禁用、Session Fork（V1）
+
+命名空间状态：
+
+| Namespace | 状态 |
+|---|---|
+| `Github\\Copilot\\V1` | 当前推荐 |
+| `Github\\Copilot\\V0` | 兼容（历史版本） |
+
+---
+
+## 2. 环境要求
+
+- PHP 8.1+
+- 已安装并可用的 Copilot CLI（`copilot`）
+- 已完成 CLI 认证（或使用 BYOK）
+
+---
+
+## 3. 安装
 
 ```bash
 composer require github/copilot-php-sdk
 ```
 
-## Quick Start (V0)
+---
 
-```php
-<?php
+## 4. 架构（全链路）
 
-require 'vendor/autoload.php';
-
-use Github\Copilot\V0\CopilotClient;
-use Github\Copilot\V0\CopilotSession;
-use Github\Copilot\V0\Events\SessionEvent;
-use Github\Copilot\V0\Types\SessionConfig;
-use Github\Copilot\V0\Types\MessageOptions;
-
-$client  = new CopilotClient();
-$session = $client->createSession(new SessionConfig(
-    model: 'gpt-4.1',
-    onPermissionRequest: CopilotSession::approveAll(),
-));
-
-$response = $session->sendAndWait(new MessageOptions('What is 2+2?'));
-echo $response?->getAssistantContent() . PHP_EOL;
-
-$session->disconnect();
-$client->stop();
+```text
+你的 PHP 应用
+    ↓
+CopilotClient / CopilotSession
+    ↓ JSON-RPC 2.0（stdio / TCP）
+Copilot CLI（server mode）
+    ↓
+GitHub Copilot API
 ```
 
-## Namespace Versioning
+---
 
-| Namespace | Status |
-|-----------|--------|
-| `Github\Copilot\V1` | Current |
-| `Github\Copilot\V0` | Stable (legacy namespace) |
-
-Each version namespace is a separate, self-contained API surface. Breaking
-changes are introduced in a new version namespace, allowing existing code
-to continue working unchanged.
-
-## Quick Start (V1)
+## 5. 快速开始（V1）
 
 ```php
 <?php
@@ -64,223 +65,100 @@ use Github\Copilot\V1\CopilotSession;
 use Github\Copilot\V1\Types\MessageOptions;
 use Github\Copilot\V1\Types\SessionConfig;
 
-$client  = new CopilotClient();
+$client = new CopilotClient();
 $session = $client->createSession(new SessionConfig(
     model: 'gpt-4.1',
     onPermissionRequest: CopilotSession::approveAll(),
 ));
 
-// V1 additional session controls:
 $session->setMode('interactive');
+$response = $session->sendAndWait(new MessageOptions('请总结当前仓库。'));
 
-$response = $session->sendAndWait(new MessageOptions('Summarize this repository.'));
 echo $response?->getAssistantContent() . PHP_EOL;
 
 $session->disconnect();
 $client->stop();
 ```
 
-## API Reference
+---
 
-### `CopilotClient`
+## 6. 全链路打通示例（V1）
 
-The main entry point.
+仓库已提供完整示例：
 
-```php
-use Github\Copilot\V0\CopilotClient;
-use Github\Copilot\V0\Types\ClientOptions;
+- `samples/full_chain_v1.php`
 
-// Default (spawns CLI via stdio)
-$client = new CopilotClient();
+覆盖能力：
 
-// Custom options
-$client = new CopilotClient(new ClientOptions(
-    cliPath:       '/usr/local/bin/copilot',
-    logLevel:      'debug',
-    githubToken:   getenv('GITHUB_TOKEN') ?: null,
-));
+1. Client 启动 + Session 创建
+2. Tool 回调
+3. Command 回调
+4. Permission 处理
+5. `user_input.requested` 处理
+6. `elicitation.requested` 处理
+7. 流式输出 + `sendAndWait`
+8. 资源清理（`disconnect` / `stop`）
 
-// Connect to an existing external CLI server
-$client = new CopilotClient(new ClientOptions(
-    cliUrl: 'localhost:3000',
-));
+运行：
+
+```bash
+php samples/full_chain_v1.php
 ```
 
-#### Methods
+---
 
-| Method | Description |
-|--------|-------------|
-| `start(): void` | Connect to / spawn the CLI server. |
-| `stop(): array` | Gracefully stop all sessions and the server. Returns any errors. |
-| `forceStop(): void` | Forcefully terminate without cleanup. |
-| `createSession(SessionConfig): CopilotSession` | Open a new session. |
-| `resumeSession(string, SessionConfig): CopilotSession` | Resume a previous session by ID. |
-| `ping(string): array` | Ping the server. |
-| `listModels(): ModelInfo[]` | List available models. |
-| `getQuota(): array` | Get account quota information. |
-| `getState(): string` | Current connection state. |
+## 7. 常用 API（V1）
 
-### `CopilotSession`
+### CopilotClient
 
-```php
-use Github\Copilot\V0\Types\SessionConfig;
-use Github\Copilot\V0\Types\MessageOptions;
-use Github\Copilot\V0\Events\SessionEvent;
+- `start(): void`
+- `stop(): array`
+- `forceStop(): void`
+- `createSession(SessionConfig): CopilotSession`
+- `resumeSession(string, ResumeSessionConfig): CopilotSession`
+- `ping(string): array`
+- `listModels(): ModelInfo[]`
+- `listTools(?string $model): array`
+- `getQuota(): array`
+- `mcpConfigList(): array`
+- `mcpConfigAdd(McpServerConfig): void`
+- `mcpConfigUpdate(McpServerConfig): void`
+- `mcpConfigRemove(string): void`
+- `mcpDiscover(?string): array`
+- `discoverSkills(array, array): array`
+- `setDisabledSkills(array): void`
+- `forkSession(string, ?string): array`
 
-$session = $client->createSession(new SessionConfig(
-    model:              'gpt-4.1',
-    onPermissionRequest: CopilotSession::approveAll(),
-));
-```
+### CopilotSession
 
-#### Sending messages
+- 消息：`send()` / `sendAndWait()` / `getMessages()`
+- 模型：`getCurrentModel()` / `switchModel()`
+- 模式：`getMode()` / `setMode()`
+- 会话管理：`getName()` / `setName()` / `disconnect()`
+- Workspace：`getWorkspace()` / `listWorkspaceFiles()` / `readWorkspaceFile()` / `createWorkspaceFile()`
+- 历史：`compactHistory()` / `truncateHistory()`
+- Shell：`execShell()` / `killShell()`
+- Agent / Skills / MCP / Extensions / Plugins 对应 `list|enable|disable|reload` 方法
 
-```php
-// Non-blocking — events arrive via on()
-$messageId = $session->send(new MessageOptions('Hello!'));
+---
 
-// Blocking — waits until session.idle
-$event = $session->sendAndWait('What is 2+2?', timeout: 30.0);
-echo $event?->getAssistantContent();
-```
+## 8. V0 示例
 
-#### Handling events
+- `php samples/chat.php`：V0 基础对话
+- `php samples/custom_tool.php`：V0 自定义工具
+- `php samples/chat_v1.php`：V1 基础对话
 
-```php
-// All events
-$unsubscribe = $session->on(function (SessionEvent $event): void {
-    if ($event->isAssistantMessage()) {
-        echo $event->getAssistantContent();
-    }
-});
+---
 
-// Specific event type
-$session->onType('session.idle', function (SessionEvent $event): void {
-    echo "Session is idle\n";
-});
-
-// Unsubscribe later
-$unsubscribe();
-```
-
-#### Session management
-
-```php
-// Get current model
-$model = $session->getCurrentModel();
-
-// Switch model mid-session
-$session->switchModel('claude-sonnet-4.5');
-
-// Get conversation history
-$messages = $session->getMessages();
-
-// Pump message loop manually
-$session->pump(0.1); // wait up to 100 ms
-
-// Clean up
-$session->disconnect();
-```
-
-### Custom Tools
-
-```php
-use Github\Copilot\V0\Types\Tool;
-use Github\Copilot\V0\Types\SessionConfig;
-
-$weatherTool = new Tool(
-    name:        'get_weather',
-    description: 'Get current weather for a city',
-    parameters:  [
-        'type'       => 'object',
-        'properties' => [
-            'city' => ['type' => 'string', 'description' => 'City name'],
-        ],
-        'required'   => ['city'],
-    ],
-    handler: function (array $args): string {
-        $city = $args['city'];
-        // Call your weather API here
-        return "It's 22°C and sunny in {$city}.";
-    },
-);
-
-$session = $client->createSession(new SessionConfig(
-    model:               'gpt-4.1',
-    tools:               [$weatherTool],
-    onPermissionRequest: CopilotSession::approveAll(),
-));
-```
-
-### Permission Handling
-
-```php
-use Github\Copilot\V0\Types\SessionConfig;
-
-// Approve all (use in trusted environments only)
-$session = $client->createSession(new SessionConfig(
-    onPermissionRequest: CopilotSession::approveAll(),
-));
-
-// Custom handler
-$session = $client->createSession(new SessionConfig(
-    onPermissionRequest: function (array $request, array $context): array {
-        // Log the request
-        error_log("Permission requested: " . json_encode($request));
-
-        // Approve only shell reads
-        if (($request['kind'] ?? '') === 'read') {
-            return ['kind' => 'approved'];
-        }
-
-        return ['kind' => 'denied-interactively-by-user', 'feedback' => 'Denied'];
-    },
-));
-```
-
-### BYOK (Bring Your Own Key)
-
-```php
-use Github\Copilot\V0\Types\SessionConfig;
-
-$session = $client->createSession(new SessionConfig(
-    model:    'gpt-4.1',
-    provider: [
-        'type'   => 'openai',
-        'apiKey' => getenv('OPENAI_API_KEY'),
-    ],
-    onPermissionRequest: CopilotSession::approveAll(),
-));
-```
-
-## Architecture
-
-All SDK instances communicate with the Copilot CLI server via JSON-RPC 2.0,
-using the same [LSP message framing](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#headerPart) as VS Code:
-
-```
-Your PHP Application
-        ↓
-  CopilotClient
-        ↓ JSON-RPC 2.0 over stdio/TCP
-  Copilot CLI (server mode)
-        ↓
-  GitHub Copilot API
-```
-
-## Running the Tests
+## 9. 测试
 
 ```bash
 composer install
 ./vendor/bin/phpunit
 ```
 
-## Samples
+---
 
-- `php samples/chat.php` (V0 basic chat)
-- `php samples/custom_tool.php` (V0 custom tools)
-- `php samples/chat_v1.php` (V1 basic chat + mode control)
-
-## License
+## 10. 许可证
 
 MIT
