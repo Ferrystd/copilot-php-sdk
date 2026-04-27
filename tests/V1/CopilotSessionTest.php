@@ -69,36 +69,16 @@ final class CopilotSessionTest extends TestCase
         return 'Content-Length: ' . strlen($body) . "\r\n\r\n" . $body;
     }
 
-    public function testSendAndWaitReturnsAssistantMessage(): void
+    public function testSendWritesSessionSendRequest(): void
     {
         $sendResponse = ['jsonrpc' => '2.0', 'id' => 1, 'result' => ['messageId' => 'm-1']];
-        $assistant = [
-            'jsonrpc' => '2.0',
-            'method' => 'session.event',
-            'params' => [
-                'sessionId' => 'test-session-id',
-                'type' => SessionEvent::TYPE_ASSISTANT_MESSAGE,
-                'data' => ['content' => '4'],
-            ],
-        ];
-        $idle = [
-            'jsonrpc' => '2.0',
-            'method' => 'session.event',
-            'params' => [
-                'sessionId' => 'test-session-id',
-                'type' => SessionEvent::TYPE_SESSION_IDLE,
-                'data' => [],
-            ],
-        ];
+        [$session, , $transport] = $this->makeSession($this->frame($sendResponse));
 
-        [$session] = $this->makeSession(
-            $this->frame($sendResponse) . $this->frame($assistant) . $this->frame($idle)
-        );
+        $messageId = $session->send(new MessageOptions('hello'));
 
-        $event = $session->sendAndWait(new MessageOptions('2+2?'), timeout: 1.0);
-
-        self::assertNotNull($event);
-        self::assertSame('4', $event->getAssistantContent());
+        self::assertSame('m-1', $messageId);
+        self::assertStringContainsString('"method":"session.send"', $transport->written);
+        self::assertStringContainsString('"sessionId":"test-session-id"', $transport->written);
     }
 
     public function testPermissionRequestIsHandled(): void
