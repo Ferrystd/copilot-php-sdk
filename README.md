@@ -15,7 +15,7 @@ PHP SDK for programmatic control of GitHub Copilot CLI via JSON-RPC.
 composer require github/copilot-php-sdk
 ```
 
-## Quick Start
+## Quick Start (V0)
 
 ```php
 <?php
@@ -45,11 +45,40 @@ $client->stop();
 
 | Namespace | Status |
 |-----------|--------|
-| `Github\Copilot\V0` | Current |
+| `Github\Copilot\V1` | Current |
+| `Github\Copilot\V0` | Stable (legacy namespace) |
 
 Each version namespace is a separate, self-contained API surface. Breaking
 changes are introduced in a new version namespace, allowing existing code
 to continue working unchanged.
+
+## Quick Start (V1)
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+use Github\Copilot\V1\CopilotClient;
+use Github\Copilot\V1\CopilotSession;
+use Github\Copilot\V1\Types\MessageOptions;
+use Github\Copilot\V1\Types\SessionConfig;
+
+$client  = new CopilotClient();
+$session = $client->createSession(new SessionConfig(
+    model: 'gpt-4.1',
+    onPermissionRequest: CopilotSession::approveAll(),
+));
+
+// V1 additional session controls:
+$session->setMode('interactive');
+
+$response = $session->sendAndWait(new MessageOptions('Summarize this repository.'));
+echo $response?->getAssistantContent() . PHP_EOL;
+
+$session->disconnect();
+$client->stop();
+```
 
 ## API Reference
 
@@ -245,6 +274,12 @@ Your PHP Application
 composer install
 ./vendor/bin/phpunit
 ```
+
+## Samples
+
+- `php samples/chat.php` (V0 basic chat)
+- `php samples/custom_tool.php` (V0 custom tools)
+- `php samples/chat_v1.php` (V1 basic chat + mode control)
 
 ## License
 
